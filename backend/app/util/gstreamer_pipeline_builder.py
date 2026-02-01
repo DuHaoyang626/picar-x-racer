@@ -13,7 +13,7 @@ try:
     gi.require_version("Gst", "1.0")
     from gi.repository import Gst  # type: ignore
 
-    Gst.init(None)
+    Gst.init([])
 except ImportError:
     Gst = None
 

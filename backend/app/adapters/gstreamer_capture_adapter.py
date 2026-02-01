@@ -33,7 +33,7 @@ class GStreamerCaptureAdapter(VideoCaptureABC):
         except ImportError:
             raise CameraDeviceError("GStreamer (gi) bindings are not available.")
 
-        Gst.init(None)
+        Gst.init([])
         self.Gst = Gst
 
         pipeline_str = service.setup_pipeline(

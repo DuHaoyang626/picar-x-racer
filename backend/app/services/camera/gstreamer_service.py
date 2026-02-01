@@ -135,7 +135,7 @@ class GStreamerService(VideoDeviceABC):
             gi.require_version("Gst", "1.0")
             from gi.repository import GLib, Gst  # type: ignore
 
-            Gst.init(None)
+            Gst.init([])
         except Exception:
             _log.warning("Failed to import 'gi'")
             return []
