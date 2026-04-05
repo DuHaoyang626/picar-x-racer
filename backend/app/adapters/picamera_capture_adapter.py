@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from cv2.typing import MatLike
 
     try:
-        from picamera2 import Picamera2
+        from picamera2 import Picamera2  # type: ignore
     except Exception:
         pass
 
@@ -54,8 +54,8 @@ class PicameraCaptureAdapter(VideoCaptureABC):
     ) -> None:
         super().__init__(service=service)
 
-        import picamera2.formats as formats
-        from picamera2 import Picamera2
+        import picamera2.formats as formats  # type: ignore
+        from picamera2 import Picamera2  # type: ignore
 
         self.service = service
 
@@ -197,7 +197,6 @@ class PicameraCaptureAdapter(VideoCaptureABC):
         In the Picamera2 case, we use capture_array() to get the frame.
         """
         try:
-
             frame = self.picam2.capture_array()
 
             if frame is not None:

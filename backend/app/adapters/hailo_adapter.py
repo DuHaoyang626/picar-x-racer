@@ -31,7 +31,7 @@ class YOLOHailoAdapter:
                            If not provided, indices will be converted to strings.
         """
         try:
-            from picamera2.devices.hailo.hailo import Hailo
+            from picamera2.devices.hailo.hailo import Hailo  # type: ignore
         except (ImportError, ModuleNotFoundError) as e:
             logger.error("Hailo module could not be imported: %s", str(e))
             raise
