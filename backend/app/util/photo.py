@@ -5,6 +5,10 @@ from typing import Optional, Union
 import cv2
 import numpy as np
 from app.core.logger import Logger
+from app.schemas.detection import DetectionSettings
+from app.schemas.stream import ImageRotation
+from app.types.detection import DetectionQueueData, DetectionResultData
+from app.util.overlay_detecton import overlay_detection
 
 logger = Logger(__name__)
 
@@ -66,3 +70,41 @@ def width_to_height(
         else height
     )
     return int(rounded_height)
+
+
+def should_render_detection_overlay(
+    frame_timestamp: Optional[float],
+    detection_timestamp: Optional[float],
+    overlay_draw_threshold: float,
+) -> bool:
+    if frame_timestamp is None or detection_timestamp is None:
+        return False
+    return frame_timestamp - detection_timestamp <= overlay_draw_threshold
+
+
+def prepare_photo_frame(
+    frame: np.ndarray,
+    rotation: ImageRotation,
+    detection_settings: Optional[DetectionSettings] = None,
+    detection_state: Optional[Union[DetectionQueueData, DetectionResultData]] = None,
+    frame_timestamp: Optional[float] = None,
+) -> np.ndarray:
+    result = frame.copy()
+
+    if detection_settings and detection_settings.active and detection_state:
+        detection_result = detection_state.get("detection_result") or []
+        detection_timestamp = detection_state.get("timestamp")
+        if detection_result and should_render_detection_overlay(
+            frame_timestamp,
+            detection_timestamp,
+            detection_settings.overlay_draw_threshold,
+        ):
+            result = overlay_detection(result, detection_result)
+
+    if rotation == ImageRotation.rotate_90:
+        return cv2.rotate(np.ascontiguousarray(result), cv2.ROTATE_90_CLOCKWISE)
+    if rotation == ImageRotation.rotate_180:
+        return cv2.rotate(np.ascontiguousarray(result), cv2.ROTATE_180)
+    if rotation == ImageRotation.rotate_270:
+        return cv2.rotate(np.ascontiguousarray(result), cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return result

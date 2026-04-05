@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,17 @@ def is_raspberry_pi() -> bool:
         return "raspberry pi" in model_info
     except FileNotFoundError:
         return False
+
+
+@lru_cache()
+def is_macos() -> bool:
+    """
+    Check if the current operating system is macOS.
+
+    Returns:
+        bool: True when the process is running on Darwin/macOS.
+    """
+    return platform.system() == "Darwin"
 
 
 @lru_cache()

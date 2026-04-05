@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
+from app.adapters.avfoundation_capture_adapter import AVFoundationCaptureAdapter
 from app.adapters.gstreamer_capture_adapter import GStreamerCaptureAdapter
 from app.adapters.picamera_capture_adapter import PicameraCaptureAdapter
 from app.adapters.v4l2_capture_adapter import V4l2CaptureAdapter
@@ -8,9 +9,10 @@ from app.core.logger import Logger
 from app.core.video_capture_abc import VideoCaptureABC
 from app.exceptions.camera import CameraDeviceError, CameraNotFoundError
 from app.schemas.camera import CameraSettings, DeviceType
-from app.util.os_checks import is_raspberry_pi
+from app.util.os_checks import is_macos, is_raspberry_pi
 
 if TYPE_CHECKING:
+    from app.services.camera.avfoundation_service import AVFoundationService
     from app.services.camera.gstreamer_service import GStreamerService
     from app.services.camera.picamera2_service import PicameraService
     from app.services.camera.v4l2_service import V4L2Service
@@ -28,10 +30,12 @@ class VideoDeviceAdapter:
         v4l2_service: "V4L2Service",
         gstreamer_service: "GStreamerService",
         picam_service: "PicameraService",
+        avfoundation_service: "AVFoundationService",
     ) -> None:
         self.v4l2_service = v4l2_service
         self.gstreamer_service = gstreamer_service
         self.picam_service = picam_service
+        self.avfoundation_service = avfoundation_service
         self.devices: List[DeviceType] = []
 
     def _try_device_props(
@@ -42,11 +46,20 @@ class VideoDeviceAdapter:
         if api is None:
             api = (
                 "v4l2"
-                if device_path.startswith("/dev/video") or not is_raspberry_pi()
-                else "picamera2"
+                if device_path.startswith("/dev/video")
+                else (
+                    "avfoundation"
+                    if is_macos()
+                    else "v4l2" if not is_raspberry_pi() else "picamera2"
+                )
             )
 
         api_workers: Dict[str, Callable[[], VideoCaptureABC]] = {
+            "avfoundation": lambda: AVFoundationCaptureAdapter(
+                device,
+                camera_settings=camera_settings,
+                service=self.avfoundation_service,
+            ),
             "picamera2": lambda: PicameraCaptureAdapter(
                 device_path, camera_settings=camera_settings, service=self.picam_service
             ),
@@ -76,6 +89,10 @@ class VideoDeviceAdapter:
         return cap, cap.settings
 
     def list_devices(self) -> List[DeviceType]:
+        if is_macos():
+            self.devices = self.avfoundation_service.list_video_devices()
+            return self.devices
+
         v4l2_devices = self.v4l2_service.list_video_devices()
         failed_devices = self.v4l2_service.failed_devices
         gstreamer_devices = (
@@ -86,7 +103,7 @@ class VideoDeviceAdapter:
         picamera_devices = self.picam_service.list_video_devices()
         if gstreamer_devices is None:
             self.devices = v4l2_devices + picamera_devices
-            return v4l2_devices
+            return self.devices
 
         results: List[DeviceType] = []
         gstreamer_devices_paths = set()

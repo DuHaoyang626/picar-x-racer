@@ -3,6 +3,8 @@ import type { DiscreteDevice } from "@/features/settings/interface";
 import {
   groupDevices,
   findAlternative,
+  generateLabel,
+  isGstreamerCapableApi,
 } from "@/features/settings/components/camera/util";
 
 const sampleDevices = [
@@ -352,7 +354,7 @@ describe("groupDevices", () => {
     ).toEqual([
       {
         key: "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a",
-        label: "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a imx708_wide",
+        label: "imx708_wide",
         children: [
           {
             key: "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a:NV21",
@@ -416,7 +418,7 @@ describe("groupDevices", () => {
       },
       {
         key: "picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a",
-        label: "picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a imx708_wide",
+        label: "imx708_wide",
         children: [
           {
             key: "picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a:I420 320x240 - 4608x2592 15-120FPS",
@@ -459,5 +461,38 @@ describe("groupDevices", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("generateLabel", () => {
+  test("should collapse fixed stepwise sizes into a single resolution", () => {
+    expect(
+      generateLabel({
+        device: "avfoundation:/camera-id",
+        name: "MacBook Pro Camera",
+        pixel_format: "420v",
+        media_type: "video/x-raw",
+        api: "avfoundation",
+        path: "/camera-id",
+        min_width: 640,
+        max_width: 640,
+        min_height: 480,
+        max_height: 480,
+        width_step: 1,
+        height_step: 1,
+        min_fps: 15,
+        max_fps: 30,
+        fps_step: 1,
+      }),
+    ).toBe("420v 640x480 15-30FPS video/x-raw");
+  });
+});
+
+describe("isGstreamerCapableApi", () => {
+  test("should allow only Linux camera APIs", () => {
+    expect(isGstreamerCapableApi("v4l2")).toBe(true);
+    expect(isGstreamerCapableApi("libcamera")).toBe(true);
+    expect(isGstreamerCapableApi("avfoundation")).toBe(false);
+    expect(isGstreamerCapableApi("picamera2")).toBe(false);
   });
 });

@@ -146,6 +146,7 @@
         :message="invalidData.fps"
         @update:model-value="validate"
         @value-change="handleChangeFPS"
+        :step="invalidData.fps ? 1 : (selectedDevice as any)?.fps_step || 1"
         @blur="validate"
       >
         <Slider
@@ -156,6 +157,7 @@
           :loading="loading"
           :min="selectedDevice && (selectedDevice as any).min_fps"
           :max="selectedDevice && (selectedDevice as any).max_fps"
+          :step="invalidData.fps ? 1 : (selectedDevice as any)?.fps_step || 1"
           @update:model-value="validate"
         />
       </NumberInputField>
@@ -166,7 +168,8 @@
       field="use_gstreamer"
       layout="row-reverse"
       field-class-name="flex-row-reverse gap-2.5 items-center justify-end my-1"
-      tooltip="Whether to use GStreamer"
+      :tooltip="gstreamerTooltip"
+      :disabled="loading || !gstreamerSupported"
       label="Use GStreamer"
       v-model="useGstreamer"
       @update:model-value="handleToggleGstreamer"
@@ -216,6 +219,7 @@ import {
   groupDevices,
   extractDeviceAPI,
   findAlternative,
+  isGstreamerCapableApi,
 } from "@/features/settings/components/camera/util";
 import ToggleSwitchField from "@/ui/ToggleSwitchField.vue";
 import { commonPathPrefix } from "@/util/str";
@@ -229,8 +233,13 @@ const devices = computed(() => {
 
   return grouped.map(({ label, ...item }) => ({
     ...item,
-    tooltip: label,
-    label: sortByLengthAsc(label.substring(prefix.length).split(" ")).join(" "),
+    tooltip: item.key !== label ? `${label} (${item.key})` : label,
+    label:
+      prefix.length > 0 &&
+      extractDeviceAPI(item.key) !== "avfoundation" &&
+      label.startsWith(prefix)
+        ? sortByLengthAsc(label.substring(prefix.length).split(" ")).join(" ")
+        : label,
   }));
 });
 
@@ -267,6 +276,23 @@ const label = computed(() => {
 
   return camLabel.length > 0 ? camLabel : "Camera Device: ";
 });
+
+const selectedDeviceApi = computed(
+  () => extractDeviceAPI(selectedDevice.value?.device || camStore.data.device) || null,
+);
+
+const gstreamerSupported = computed(() =>
+  isGstreamerCapableApi(selectedDeviceApi.value),
+);
+
+const gstreamerTooltip = computed(() =>
+  gstreamerSupported.value
+    ? "Whether to use GStreamer"
+    : "GStreamer is available only for V4L2 or libcamera devices.",
+);
+
+const currentUseGstreamer = () =>
+  gstreamerSupported.value ? !!useGstreamer.value : false;
 
 const invalidData = ref<Partial<Record<"width" | "height" | "fps", string>>>(
   {},
@@ -320,7 +346,7 @@ const isUnchanged = () => {
     : (selectedDevice.value as DiscreteDevice);
 
   return (
-    useGstreamer.value === camStore.data.use_gstreamer &&
+    currentUseGstreamer() === !!camStore.data.use_gstreamer &&
     where(
       {
         device: (v) => v === selectedDevice.value?.device,
@@ -383,7 +409,7 @@ const updateStepwiseDevice = async () => {
   }
 
   await camStore.updateData({
-    use_gstreamer: useGstreamer.value,
+    use_gstreamer: currentUseGstreamer(),
     pixel_format: stepwiseParams.pixel_format,
     device: stepwiseParams.device,
 
@@ -410,7 +436,7 @@ const updateDevice = async (deviceParams: Device) => {
 
     await camStore.updateData({
       ...discreted,
-      use_gstreamer: useGstreamer.value,
+      use_gstreamer: currentUseGstreamer(),
     });
   } else if (isStepwiseDevice(deviceParams)) {
     stepwisePresetValue.value = findStepwisePreset(stepwiseData.value)?.value;
@@ -420,11 +446,15 @@ const updateDevice = async (deviceParams: Device) => {
 };
 
 const handleToggleGstreamer = async (value: boolean) => {
+  if (!gstreamerSupported.value) {
+    useGstreamer.value = false;
+    return;
+  }
   useGstreamer.value = value;
 
   const data = {
     ...(selectedDevice.value ? selectedDevice.value : camStore.data),
-    use_gstreamer: value,
+    use_gstreamer: currentUseGstreamer(),
   };
 
   const devicePath = selectedDevice.value?.device || camStore.data.device;
@@ -456,7 +486,7 @@ const handleToggleGstreamer = async (value: boolean) => {
     await Promise.all([
       camStore.updateData({
         ...alternative,
-        use_gstreamer: data.use_gstreamer,
+        use_gstreamer: currentUseGstreamer(),
       }),
       camStore.fetchDevices(),
     ]);
@@ -480,8 +510,19 @@ watch(
       height: camStore.data.height,
       fps: camStore.data.fps || stepwiseData.value.fps,
     };
-    useGstreamer.value = camStore.data.use_gstreamer;
+    useGstreamer.value = gstreamerSupported.value
+      ? camStore.data.use_gstreamer
+      : false;
     validate();
+  },
+);
+
+watch(
+  () => gstreamerSupported.value,
+  (supported) => {
+    if (!supported && useGstreamer.value) {
+      useGstreamer.value = false;
+    }
   },
 );
 

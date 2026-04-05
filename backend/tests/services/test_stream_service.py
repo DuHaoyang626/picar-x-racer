@@ -72,6 +72,9 @@ class DummyCameraService:
         self.notify_camera_error = AsyncMock()
         self.stream_settings = StreamSettings()
 
+    def bind_notification_loop(self) -> None:
+        pass
+
     def start_camera(self) -> None:
         pass
 
@@ -184,6 +187,23 @@ class TestStreamService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.stream_service.active_clients, 0)
 
         self.dummy_cam.stop_camera.assert_called()
+
+    async def test_video_stream_retries_after_previous_camera_error(self):
+        ws = FakeWebSocket(cancelled=False)
+
+        async def fake_generate_video_stream(websocket: WebSocket) -> None:
+            logging.debug("websocket=%s", websocket)
+            return
+
+        self.stream_service._ws_video_loop = fake_generate_video_stream
+
+        self.dummy_cam.camera_run = False
+        self.dummy_cam.camera_device_error = "Previous camera error"
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            await self.stream_service.video_stream(cast(WebSocket, ws))
+
+        self.dummy_cam.start_camera.assert_called_once()
 
     async def test_video_stream_auto_stop_camera_disabled(self):
         """

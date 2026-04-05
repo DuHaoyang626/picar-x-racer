@@ -5,8 +5,8 @@ from functools import lru_cache
 from typing import Dict, List, Optional, Union
 
 from app.core.logger import Logger
+from app.core.video_device_abc import VideoDeviceABC
 from app.schemas.camera import DeviceStepwise, DeviceType
-from app.services.camera.v4l2_service import VideoDeviceABC
 from app.types.picamera_types import GlobalCameraInfo
 
 _log = Logger(name=__name__)

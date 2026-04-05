@@ -38,6 +38,7 @@ class CameraSettings(BaseModel):
             "'picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a' etc.",
             examples=[
                 "/dev/video0",
+                "avfoundation:/6C707041-05AC-0011-0002-000000000001",
                 "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a",
                 "picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a",
             ],
@@ -147,6 +148,7 @@ class DeviceCommonProps(BaseModel):
         "'picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a' etc.",
         examples=[
             "/dev/video0",
+            "avfoundation:/6C707041-05AC-0011-0002-000000000001",
             "v4l2:/dev/video0",
             "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a",
             "picamera2:/base/soc/i2c0mux/i2c@1/imx708@1a",
@@ -200,6 +202,7 @@ class DeviceCommonProps(BaseModel):
             title="Device API",
             description="The API used to interface with the device.",
             examples=[
+                "avfoundation",
                 "libcamera",
                 "v4l2",
             ],
@@ -212,6 +215,7 @@ class DeviceCommonProps(BaseModel):
             title="Device path",
             description="The device path without api prefix.",
             examples=[
+                "/6C707041-05AC-0011-0002-000000000001",
                 "/base/soc/i2c0mux/i2c@1/imx708@1a",
                 "/dev/video21",
             ],
@@ -329,6 +333,23 @@ class CameraDevicesResponse(BaseModel):
         description=("A list of camera devices and their configurations."),
         examples=[
             [
+                {
+                    "device": "avfoundation:/6C707041-05AC-0011-0002-000000000001",
+                    "name": "MacBook Pro Camera",
+                    "pixel_format": "420v",
+                    "media_type": "video/x-raw",
+                    "api": "avfoundation",
+                    "path": "/6C707041-05AC-0011-0002-000000000001",
+                    "min_width": 640,
+                    "max_width": 640,
+                    "min_height": 480,
+                    "max_height": 480,
+                    "height_step": 1,
+                    "width_step": 1,
+                    "min_fps": 15,
+                    "max_fps": 30,
+                    "fps_step": 1,
+                },
                 {
                     "device": "libcamera:/base/soc/i2c0mux/i2c@1/imx708@1a",
                     "name": "imx708_wide",

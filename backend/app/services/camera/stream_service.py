@@ -168,20 +168,19 @@ class StreamService:
             await self._disconnect(websocket)
             return
 
+        self.camera_service.bind_notification_loop()
         self.active_clients += 1
 
         _log.info("Video Stream %s connection established", self.active_clients)
 
         try:
 
-            if (
-                not self.camera_service.camera_run
-                and not self.camera_service.camera_device_error
-                and not self.loading
-            ):
+            if not self.camera_service.camera_run and not self.loading:
                 self.loading = True
-                await asyncio.to_thread(self.camera_service.start_camera)
-                self.loading = False
+                try:
+                    await asyncio.to_thread(self.camera_service.start_camera)
+                finally:
+                    self.loading = False
 
             if not self._check_app_cancelled(websocket):
                 await self._ws_video_loop(websocket)

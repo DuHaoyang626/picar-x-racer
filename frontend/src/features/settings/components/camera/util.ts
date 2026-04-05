@@ -19,6 +19,20 @@ export type ItemData<Item> = {
   children?: ItemData<Item>[];
 } & Item;
 
+const STEP_EPSILON = 1e-6;
+
+const isStepAligned = (
+  value: number,
+  minValue: number,
+  step: number,
+): boolean => {
+  if (!Number.isFinite(step) || step <= 0) {
+    return true;
+  }
+  const offset = (value - minValue) / step;
+  return Math.abs(offset - Math.round(offset)) < STEP_EPSILON;
+};
+
 export const findStepwisePreset = ({
   width,
   height,
@@ -63,6 +77,10 @@ export const extractDeviceAPI = (path?: Nullable<string>) => {
     return parts.shift();
   }
 };
+
+export const isGstreamerCapableApi = (api?: Nullable<string>) =>
+  api === "v4l2" || api === "libcamera";
+
 export const extractDeviceId = (path?: Nullable<string>) => {
   if (!path) {
     return path;
@@ -80,10 +98,11 @@ const checkPixelFormat = (a?: Nullable<string>, b?: Nullable<string>) =>
 
 export const checkStepwiseFPS = (
   fps: Nullable<number>,
-  stepwiseDevice: Pick<DeviceStepwise, "min_fps" | "max_fps">,
+  stepwiseDevice: Pick<DeviceStepwise, "min_fps" | "max_fps" | "fps_step">,
 ) =>
   isNumber(fps)
-    ? inRange(fps, stepwiseDevice.min_fps, stepwiseDevice.max_fps)
+    ? inRange(fps, stepwiseDevice.min_fps, stepwiseDevice.max_fps) &&
+      isStepAligned(fps, stepwiseDevice.min_fps, stepwiseDevice.fps_step || 1)
     : true;
 
 export const checkStepwiseSize = (
@@ -208,7 +227,7 @@ export const validateStepwiseData = (
         isNumber(minVal) &&
         isNumber(maxVal) &&
         step &&
-        (val - minVal) % step !== 0
+        !isStepAligned(val, minVal, step)
       ) {
         const closestValidValue = Math.min(
           maxVal,
@@ -231,11 +250,14 @@ export const generateLabel = (device: Device) => {
   if (isStepwiseDevice(device)) {
     const minSize = props(["min_width", "min_height"], device).join("x");
     const maxSize = props(["max_width", "max_height"], device).join("x");
-    const fps = props(["min_fps", "max_fps"], device)
-      .map((v) => `${v}`)
-      .join("-")
-      .concat("FPS");
-    const size = `${minSize} - ${maxSize}`;
+    const fps =
+      device.min_fps === device.max_fps
+        ? `${device.max_fps}FPS`
+        : props(["min_fps", "max_fps"], device)
+            .map((v) => `${v}`)
+            .join("-")
+            .concat("FPS");
+    const size = minSize === maxSize ? minSize : `${minSize} - ${maxSize}`;
     return [device.pixel_format, size, fps, device.media_type]
       .filter((val) => !!val)
       .map((v) => `${v}`)
@@ -284,7 +306,7 @@ export const groupDevices = (devices: Device[]) => {
     if (!deviceMap[deviceKey]) {
       deviceMap[deviceKey] = {
         key: deviceKey,
-        label: [deviceKey, device.name].filter((v) => !!v).join(" "),
+        label: device.name || deviceKey,
         children: [],
       };
     }

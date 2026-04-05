@@ -2,7 +2,7 @@
 
 # Picar-X Racer
 
-Picar-X Racer is a robotics and AI platform designed to control either the [Picar-X vehicle](https://docs.sunfounder.com/projects/picar-x/en/stable/) running on a Raspberry Pi or a custom robot (e.g., using Waveshare's [RPi Motor Driver Board](https://www.waveshare.com/rpi-motor-driver-board.htm), [Servo Driver HAT](https://www.waveshare.com/wiki/Servo_Driver_HAT), and [UPS Module S3](https://www.waveshare.com/wiki/UPS_Module_3S)). It also supports AI, camera operations, multimedia functionality, and real-time object detection on other Linux-based systems (for example, Ubuntu) without requiring a physical robot.
+Picar-X Racer is a robotics and AI platform designed to control either the [Picar-X vehicle](https://docs.sunfounder.com/projects/picar-x/en/stable/) running on a Raspberry Pi or a custom robot (e.g., using Waveshare's [RPi Motor Driver Board](https://www.waveshare.com/rpi-motor-driver-board.htm), [Servo Driver HAT](https://www.waveshare.com/wiki/Servo_Driver_HAT), and [UPS Module S3](https://www.waveshare.com/wiki/UPS_Module_3S)). It also supports AI, camera operations, multimedia functionality, and real-time object detection on other Unix-based systems (for example, Ubuntu and MacOS) without requiring a physical robot.
 
 ![Demo](./demo/picar-x-racer-demo.gif)
 
@@ -75,11 +75,12 @@ Picar-X Racer is a robotics and AI platform designed to control either the [Pica
 
 ## Supported Camera Backends
 
-**Picar-X Racer** supports both the **V4L2** and **libcamera** stacks, with the following backends:
+**Picar-X Racer** supports the **V4L2**, **libcamera**, and macOS **AVFoundation** stacks, with the following backends:
 
 - `V4L2` - Uses ioctl for device enumeration and direct video capture.
 - `GStreamer` (V4L2 & libcamera) - Interacts directly with GStreamer via PyGObject (gi.repository.Gst), eliminating the need for OpenCV compilation.
 - `Picamera2` - Python API for libcamera, optimized for Raspberry Pi.
+- `AVFoundation` (macOS) - Native macOS camera backend for device discovery and capture.
 
 You can switch between them dynamically.
 

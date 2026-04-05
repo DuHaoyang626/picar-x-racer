@@ -1,11 +1,12 @@
 import unittest
 from unittest.mock import Mock, mock_open, patch
 
-from app.util.os_checks import get_gpio_factory_name, is_raspberry_pi
+from app.util.os_checks import get_gpio_factory_name, is_macos, is_raspberry_pi
 
 
 class TestOSChecks(unittest.TestCase):
     def tearDown(self):
+        is_macos.cache_clear()
         is_raspberry_pi.cache_clear()
         get_gpio_factory_name.cache_clear()
 
@@ -96,6 +97,16 @@ class TestOSChecks(unittest.TestCase):
         result = get_gpio_factory_name()
         self.assertEqual(result, "mock")
         mock_exists.assert_called_once_with("/proc/device-tree/model")
+
+    @patch("platform.system", return_value="Darwin")
+    def test_is_macos_true(self, mock_system: Mock):
+        self.assertTrue(is_macos())
+        mock_system.assert_called_once()
+
+    @patch("platform.system", return_value="Linux")
+    def test_is_macos_false(self, mock_system: Mock):
+        self.assertFalse(is_macos())
+        mock_system.assert_called_once()
 
 
 if __name__ == "__main__":

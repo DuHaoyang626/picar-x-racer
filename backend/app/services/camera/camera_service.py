@@ -3,6 +3,7 @@ import collections
 import os
 import threading
 import time
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Optional, Union
 
 import numpy as np
@@ -72,14 +73,46 @@ class CameraService:
         self.img: Optional[np.ndarray] = None
         self.stream_img: Optional[np.ndarray] = None
         self.cap: Union[VideoCaptureABC, None] = None
+        self._capture_thread: Optional[threading.Thread] = None
+        self._camera_operation_lock = threading.RLock()
+        self.frame_timestamps: collections.deque[float] = collections.deque(maxlen=30)
         self.camera_device_error: Optional[str] = None
         self.camera_loading: bool = False
         self.shutting_down = False
+        self._notification_loop: Optional[asyncio.AbstractEventLoop] = None
 
         self.emitter = EventEmitter()
-        self.emitter.on("frame_error", self.notify_camera_error)
+
+    def bind_notification_loop(self) -> None:
+        try:
+            self._notification_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+    @staticmethod
+    def _log_notification_future(
+        future: Future[object],
+    ) -> None:
+        try:
+            future.result()
+        except Exception:
+            _log.warning("Failed to broadcast camera error", exc_info=True)
+
+    def _dispatch_camera_error(self, error: Optional[str]) -> None:
+        self.camera_device_error = error
+
+        loop = self._notification_loop
+        if loop is None or loop.is_closed() or not loop.is_running():
+            return
+
+        future = asyncio.run_coroutine_threadsafe(
+            self.notify_camera_error(error),
+            loop,
+        )
+        future.add_done_callback(self._log_notification_future)
 
     async def notify_camera_error(self, error: Optional[str]) -> None:
+        self.bind_notification_loop()
         self.camera_device_error = error
 
         await self.connection_manager.broadcast_json(
@@ -130,6 +163,11 @@ class CameraService:
             _log.warning("Service is shutting down.")
             raise CameraShutdownInProgressError("The camera is shutting down.")
 
+        self.bind_notification_loop()
+
+        if not isinstance(settings, CameraSettings):
+            settings = CameraSettings(**settings)
+
         self.camera_settings = settings
         await asyncio.to_thread(self.restart_camera)
         return self.camera_settings
@@ -152,6 +190,11 @@ class CameraService:
         if self.shutting_down:
             _log.warning("Service is shutting down.")
             raise CameraShutdownInProgressError("The camera is shutting down.")
+
+        self.bind_notification_loop()
+
+        if not isinstance(settings, StreamSettings):
+            settings = StreamSettings(**settings)
 
         is_recording_start = (
             settings.video_record and not self.stream_settings.video_record
@@ -184,47 +227,80 @@ class CameraService:
                 lambda t: asyncio.create_task(self.notify_video_record_end(t))
             )
 
+        await asyncio.to_thread(
+            self.file_manager.save_settings,
+            {"stream": self.stream_settings.model_dump()},
+        )
         return self.stream_settings
 
-    def _release_cap_safe(self) -> None:
+    def _reset_camera_state(self) -> None:
+        self.img = None
+        self.stream_img = None
+        self.current_frame_timestamp = None
+        self.actual_fps = None
+        self.frame_timestamps.clear()
+
+    def _persist_camera_settings(self, settings: CameraSettings) -> None:
+        try:
+            self.file_manager.save_settings({"camera": settings.model_dump()})
+        except Exception:
+            _log.warning("Failed to persist camera settings", exc_info=True)
+
+    @staticmethod
+    def _release_cap_safe(cap: Optional[VideoCaptureABC]) -> None:
         """
         Safely releases the camera resource represented.
         """
-        if self.cap:
-            self.cap.release()
-        self.cap = None
+        if cap is None:
+            return
+        try:
+            cap.release()
+        except Exception:
+            _log.warning("Failed to release camera resource cleanly", exc_info=True)
 
-    def _camera_thread_func(self) -> None:
+    def _update_actual_fps(self, frame_timestamp: float, prev_fps: float) -> float:
+        self.frame_timestamps.append(frame_timestamp)
+
+        if len(self.frame_timestamps) < 5:
+            return prev_fps
+
+        time_window = self.frame_timestamps[-1] - self.frame_timestamps[0]
+        if time_window < 0.5:
+            return prev_fps
+
+        actual_fps = calc_fps(self.frame_timestamps)
+        if actual_fps is None:
+            return prev_fps
+
+        self.actual_fps = actual_fps
+        if abs(actual_fps - prev_fps) > 1:
+            _log.info("FPS: %s", actual_fps)
+            return actual_fps
+        return prev_fps
+
+    def _camera_thread_func(self, cap: VideoCaptureABC) -> None:
         """
         Camera capture loop function.
         """
         prev_fps = 0.0
-
-        self.frame_timestamps: collections.deque[float] = collections.deque(maxlen=30)
+        capture_thread = threading.current_thread()
+        self.frame_timestamps.clear()
 
         try:
-            while not self.shutting_down and self.camera_run and self.cap:
-                frame_start_time = time.time()
-                ret, frame = self.cap.read()
+            while not self.shutting_down and self.camera_run and self.cap is cap:
+                frame_start_time = time.monotonic()
+                ret, frame = cap.read()
                 if not ret:
+                    if self.shutting_down or not self.camera_run or self.cap is not cap:
+                        break
                     self.camera_device_error = "Failed to read frame from the camera."
-                    self.emitter.emit("frame_error", self.camera_device_error)
+                    self._dispatch_camera_error(self.camera_device_error)
                     break
 
-                else:
+                if self.camera_device_error:
+                    self._dispatch_camera_error(None)
 
-                    if self.camera_device_error:
-                        self.emitter.emit("frame_error", None)
-
-                    self.frame_timestamps.append(frame_start_time)
-
-                    self.actual_fps = calc_fps(self.frame_timestamps)
-                    if (
-                        self.actual_fps is not None
-                        and abs(self.actual_fps - prev_fps) > 1
-                    ):
-                        _log.info("FPS: %s", self.actual_fps)
-                        prev_fps = self.actual_fps
+                prev_fps = self._update_actual_fps(frame_start_time, prev_fps)
 
                 enhance_mode = self.stream_settings.enhance_mode
                 frame_enhancer = (
@@ -233,7 +309,7 @@ class CameraService:
                     else None
                 )
 
-                if not self.shutting_down:
+                if not self.shutting_down and self.camera_run and self.cap is cap:
                     self.img = frame
                     try:
                         self.stream_img = (
@@ -241,7 +317,7 @@ class CameraService:
                         )
                     except Exception as e:
                         self.camera_device_error = f"Failed to apply video effect: {e}"
-                        self.emitter.emit("frame_error", self.camera_device_error)
+                        self._dispatch_camera_error(self.camera_device_error)
                         break
                     if (
                         self.stream_settings.video_record
@@ -264,12 +340,20 @@ class CameraService:
                 "Stopped camera loop due to connection-related error: %s",
                 type(e).__name__,
             )
-        except Exception:
+        except Exception as exc:
+            if not self.shutting_down and self.camera_run and self.cap is cap:
+                self.camera_device_error = f"Camera capture failed: {exc}"
+                self._dispatch_camera_error(self.camera_device_error)
             _log.error("Unhandled exception occurred in camera loop", exc_info=True)
         finally:
-            self._release_cap_safe()
-            self.video_recorder.stop_recording_safe()
-            self.stream_img = None
+            if self.cap is cap:
+                self._release_cap_safe(cap)
+                self.cap = None
+                self.camera_run = False
+                self.video_recorder.stop_recording_safe()
+                self._reset_camera_state()
+            if self._capture_thread is capture_thread:
+                self._capture_thread = None
             _log.info("Camera loop terminated and camera released.")
 
     def _process_frame(self, frame: "MatLike") -> None:
@@ -309,7 +393,7 @@ class CameraService:
             if not self.detection_service.shutting_down:
                 self.detection_service.put_frame(frame_data)
 
-    def start_camera(self) -> None:
+    def _start_camera_locked(self) -> None:
         """
         Configures and starts the camera capture thread.
 
@@ -323,14 +407,28 @@ class CameraService:
         _log.info("Starting camera.")
         if self.shutting_down:
             _log.warning("Service is shutting down.")
-        if self.camera_run:
+            return
+        if (
+            self.camera_run
+            and self.cap is not None
+            and self._capture_thread is not None
+            and self._capture_thread.is_alive()
+        ):
             _log.warning("Camera is already running.")
             return
-        self.camera_run = True
-        self.emitter.emit("frame_error", None)
+
+        cap: Optional[VideoCaptureABC] = None
+        previous_camera_settings = self.camera_settings.model_dump()
+
         try:
             self.video_recorder.stop_recording_safe()
-            self._release_cap_safe()
+            self._release_cap_safe(self.cap)
+            self.cap = None
+            self._capture_thread = None
+            self._reset_camera_state()
+            self.camera_run = True
+            self._dispatch_camera_error(None)
+
             cap, props = self.video_device_adapter.setup_video_capture(
                 self.camera_settings
             )
@@ -349,6 +447,8 @@ class CameraService:
 
             self.cap = cap
             self.camera_settings = props
+            if self.camera_settings.model_dump() != previous_camera_settings:
+                self._persist_camera_settings(self.camera_settings)
             if (
                 self.stream_settings.video_record
                 and self.camera_settings.width
@@ -361,24 +461,35 @@ class CameraService:
                     fps=float(fps or 30),
                 )
             self._capture_thread = threading.Thread(
-                target=self._camera_thread_func, daemon=True
+                target=self._camera_thread_func,
+                args=(cap,),
+                daemon=True,
             )
             self._capture_thread.start()
-            self.camera_device_error = None
 
         except (CameraNotFoundError, CameraDeviceError) as e:
-            self.stop_camera()
+            self.camera_run = False
+            self.cap = None
+            self._capture_thread = None
+            self._reset_camera_state()
+            self._release_cap_safe(cap)
             err_msg = str(e)
             self.camera_device_error = err_msg
-            self.stream_img = None
             _log.error(err_msg)
             raise
 
         except Exception:
-            self.stop_camera()
             self.camera_run = False
+            self.cap = None
+            self._capture_thread = None
+            self._reset_camera_state()
+            self._release_cap_safe(cap)
             _log.error("Unhandled exception", exc_info=True)
             raise
+
+    def start_camera(self) -> None:
+        with self._camera_operation_lock:
+            self._start_camera_locked()
 
     async def start_camera_and_wait_for_stream_img(self) -> None:
         """
@@ -386,6 +497,7 @@ class CameraService:
         """
 
         if not self.camera_run:
+            self.bind_notification_loop()
             await asyncio.to_thread(self.start_camera)
 
         counter = 0
@@ -408,30 +520,47 @@ class CameraService:
         """
         Gracefully stops the camera capture thread and cleans up associated resources.
         """
-        if not self.camera_run:
-            _log.info("Camera is not running.")
-            self._release_cap_safe()
-            return
+        with self._camera_operation_lock:
+            capture_thread = self._capture_thread
+            cap = self.cap
 
-        _log.info("Stopping camera and checking camera capture thread")
+            if not self.camera_run and cap is None and (
+                capture_thread is None or not capture_thread.is_alive()
+            ):
+                _log.info("Camera is not running.")
+                return
 
-        self.camera_run = False
+            _log.info("Stopping camera and checking camera capture thread")
 
-        if hasattr(self, "_capture_thread") and self._capture_thread.is_alive():
-            _log.info("Stopping camera capture thread")
-            self._capture_thread.join()
-            _log.info("Stopped camera capture thread")
+            self.camera_run = False
+            self.cap = None
+            self._capture_thread = None
+            self.video_recorder.stop_recording_safe()
+            self._reset_camera_state()
+            self._release_cap_safe(cap)
+
+            if (
+                capture_thread is not None
+                and capture_thread is not threading.current_thread()
+                and capture_thread.is_alive()
+            ):
+                _log.info("Stopping camera capture thread")
+                capture_thread.join()
+                _log.info("Stopped camera capture thread")
 
     def restart_camera(self) -> None:
         """
         Restarts the camera by stopping and reinitializing it.
         """
-        _log.info("Restarting camera")
-        cam_running = self.camera_run
-        if cam_running:
-            self.stop_camera()
-        if not self.shutting_down:
-            self.start_camera()
+        with self._camera_operation_lock:
+            _log.info("Restarting camera")
+            cam_running = self.camera_run or (
+                self._capture_thread is not None and self._capture_thread.is_alive()
+            )
+            if cam_running or self.cap is not None:
+                self.stop_camera()
+            if not self.shutting_down:
+                self._start_camera_locked()
 
     def shutdown(self) -> None:
         self.shutting_down = True

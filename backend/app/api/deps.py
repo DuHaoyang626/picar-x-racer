@@ -9,6 +9,7 @@ from app.managers.file_management.file_manager import FileManager
 from app.schemas.file_management import AliasDir
 from app.schemas.music import MusicPlayerMode
 from app.services.camera.camera_service import CameraService
+from app.services.camera.avfoundation_service import AVFoundationService
 from app.services.camera.gstreamer_service import GStreamerService
 from app.services.camera.picamera2_service import PicameraService
 from app.services.camera.stream_service import StreamService
@@ -59,15 +60,24 @@ def get_picamera_service() -> PicameraService:
 
 
 @lru_cache(maxsize=1)
+def get_avfoundation_service() -> AVFoundationService:
+    return AVFoundationService()
+
+
+@lru_cache(maxsize=1)
 def get_video_device_adapter(
     v4l2_service: Annotated[V4L2Service, Depends(get_v4l2_service)],
     gstreamer_service: Annotated[GStreamerService, Depends(get_gstreamer_service)],
     picam_service: Annotated[PicameraService, Depends(get_picamera_service)],
+    avfoundation_service: Annotated[
+        AVFoundationService, Depends(get_avfoundation_service)
+    ],
 ) -> VideoDeviceAdapter:
     return VideoDeviceAdapter(
         v4l2_service=v4l2_service,
         gstreamer_service=gstreamer_service,
         picam_service=picam_service,
+        avfoundation_service=avfoundation_service,
     )
 
 
