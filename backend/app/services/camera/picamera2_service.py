@@ -2,7 +2,8 @@ import math
 import threading
 import time
 from functools import lru_cache
-from typing import Dict, List, Optional, Union
+from importlib import import_module
+from typing import Any, Dict, List, Optional, Union
 
 from app.core.logger import Logger
 from app.core.video_device_abc import VideoDeviceABC
@@ -30,38 +31,47 @@ PICAMERA_TO_PIXEL_FORMATS_KEYS = PIXEL_FORMATS_TO_PICAMERA2_MAP.keys()
 _picamera2_lock = threading.Lock()
 
 
+def _load_picamera2_class() -> Optional[Any]:
+    try:
+        module = import_module("picamera2")
+    except ImportError:
+        _log.warning("Picamera2 is not installed")
+        return None
+    except Exception:
+        _log.warning("Unexpected error while importing Picamera2", exc_info=True)
+        return None
+
+    picamera2_class = getattr(module, "Picamera2", None)
+    if picamera2_class is None:
+        _log.warning("Picamera2 module is missing Picamera2")
+        return None
+    return picamera2_class
+
+
 class PicameraService(VideoDeviceABC):
     def list_video_devices(self) -> List[DeviceType]:
         return self._list_video_devices()
 
     @lru_cache()
     def _list_video_devices(self) -> List[DeviceType]:
+        picamera2_class = _load_picamera2_class()
+        if picamera2_class is None:
+            return []
+
         with _picamera2_lock:
             try:
-                from picamera2 import Picamera2
-            except ImportError:
-                _log.warning("Picamera2 is not installed")
-                return []
-            except Exception:
-                _log.warning(
-                    "Unexpected error while importing Picamera2", exc_info=True
-                )
-                return []
-
-            _log.info("Listing picamera2 devices")
-
-            try:
-                devices: List[GlobalCameraInfo] = Picamera2.global_camera_info()
+                _log.info("Listing picamera2 devices")
+                devices: List[GlobalCameraInfo] = picamera2_class.global_camera_info()
             except Exception:
                 _log.error("Failed to retrieve Picamera devices:", exc_info=True)
                 return []
 
         try:
-            devices: List[GlobalCameraInfo] = Picamera2.global_camera_info()
             detected: List[DeviceType] = []
 
             for device in devices:
-                picam2: Optional[Picamera2] = None
+                picam2: Any = None
+                sensor_modes: List[dict[str, Any]] = []
                 try:
 
                     device_path = device.get("Id")
@@ -81,8 +91,8 @@ class PicameraService(VideoDeviceABC):
 
                     with _picamera2_lock:
                         try:
-                            picam2 = Picamera2(device_num)
-                            sensor_modes = picam2.sensor_modes
+                            picam2 = picamera2_class(device_num)
+                            sensor_modes = list(picam2.sensor_modes or [])
 
                         finally:
                             if picam2 is not None:

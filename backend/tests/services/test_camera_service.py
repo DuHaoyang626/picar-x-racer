@@ -147,7 +147,7 @@ class OneShotVideoCapture:
 
 
 class SequenceVideoDeviceAdapter:
-    def __init__(self, captures: list[VideoCaptureABC]):
+    def __init__(self, captures: list[Any]):
         self._captures = captures
         self.calls = 0
 
@@ -238,23 +238,22 @@ class TestCameraServiceAsync(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
 
-        self.detection_service = cast(DetectionService, DummyDetectionService())
-        self.settings_service = cast(SettingsService, DummyFileService())
-        self.connection_service = cast(ConnectionService, DummyConnectionService())
-        self.video_device_adapter = cast(VideoDeviceAdapter, DummyVideoDeviceAdapter())
-
-        self.video_recorder = cast(VideoRecorderService, DummyVideoRecorder())
+        self.detection_service = DummyDetectionService()
+        self.settings_service = DummyFileService()
+        self.connection_service = DummyConnectionService()
+        self.video_device_adapter = DummyVideoDeviceAdapter()
+        self.video_recorder = DummyVideoRecorder()
 
         patcher = patch("app.services.camera.camera_service.Logger", dummy_logger_patch)
         self.addCleanup(patcher.stop)
         patcher.start()
 
         self.camera_service = CameraService(
-            detection_service=self.detection_service,
-            settings_service=self.settings_service,
-            connection_manager=self.connection_service,
-            video_device_adapter=self.video_device_adapter,
-            video_recorder=self.video_recorder,
+            detection_service=cast(DetectionService, self.detection_service),
+            settings_service=cast(SettingsService, self.settings_service),
+            connection_manager=cast(ConnectionService, self.connection_service),
+            video_device_adapter=cast(VideoDeviceAdapter, self.video_device_adapter),
+            video_recorder=cast(VideoRecorderService, self.video_recorder),
         )
         self.camera_service.shutting_down = False
 
@@ -336,22 +335,22 @@ class TestCameraServiceSync(unittest.TestCase):
 
     def setUp(self):
 
-        self.detection_service = cast(DetectionService, DummyDetectionService())
-        self.settings_service = cast(SettingsService, DummyFileService())
-        self.connection_service = cast(ConnectionService, DummyConnectionService())
-        self.video_device_adapter = cast(VideoDeviceAdapter, DummyVideoDeviceAdapter())
-        self.video_recorder = cast(VideoRecorderService, DummyVideoRecorder())
+        self.detection_service = DummyDetectionService()
+        self.settings_service = DummyFileService()
+        self.connection_service = DummyConnectionService()
+        self.video_device_adapter = DummyVideoDeviceAdapter()
+        self.video_recorder = DummyVideoRecorder()
 
         patcher = patch("app.services.camera.camera_service.Logger", dummy_logger_patch)
         patcher.start()
         self.addCleanup(patcher.stop)
 
         self.camera_service = CameraService(
-            detection_service=self.detection_service,
-            settings_service=self.settings_service,
-            connection_manager=self.connection_service,
-            video_device_adapter=self.video_device_adapter,
-            video_recorder=self.video_recorder,
+            detection_service=cast(DetectionService, self.detection_service),
+            settings_service=cast(SettingsService, self.settings_service),
+            connection_manager=cast(ConnectionService, self.connection_service),
+            video_device_adapter=cast(VideoDeviceAdapter, self.video_device_adapter),
+            video_recorder=cast(VideoRecorderService, self.video_recorder),
         )
         self.camera_service.shutting_down = False
 

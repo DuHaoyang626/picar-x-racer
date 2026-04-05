@@ -1,8 +1,9 @@
 import unittest
 
 import numpy as np
-from app.schemas.detection import DetectionSettings
+from app.schemas.detection import DetectionSettings, OverlayStyle
 from app.schemas.stream import ImageRotation
+from app.types.detection import DetectionQueueData
 from app.util.photo import prepare_photo_frame, should_render_detection_overlay
 
 
@@ -17,10 +18,14 @@ class TestPhotoUtils(unittest.TestCase):
         frame = np.zeros((80, 80, 3), dtype=np.uint8)
         detection_settings = DetectionSettings(
             model="yolo11n.pt",
+            confidence=0.4,
             active=True,
+            img_size=640,
+            labels=None,
             overlay_draw_threshold=1.0,
+            overlay_style=OverlayStyle.BOX,
         )
-        detection_state = {
+        detection_state: DetectionQueueData = {
             "detection_result": [
                 {
                     "bbox": [10, 10, 40, 40],
@@ -46,10 +51,14 @@ class TestPhotoUtils(unittest.TestCase):
         frame = np.zeros((80, 80, 3), dtype=np.uint8)
         detection_settings = DetectionSettings(
             model="yolo11n.pt",
+            confidence=0.4,
             active=True,
+            img_size=640,
+            labels=None,
             overlay_draw_threshold=0.5,
+            overlay_style=OverlayStyle.BOX,
         )
-        detection_state = {
+        detection_state: DetectionQueueData = {
             "detection_result": [
                 {
                     "bbox": [10, 10, 40, 40],
@@ -74,10 +83,14 @@ class TestPhotoUtils(unittest.TestCase):
         frame = np.zeros((40, 80, 3), dtype=np.uint8)
         detection_settings = DetectionSettings(
             model="yolo11n.pt",
+            confidence=0.4,
             active=True,
+            img_size=640,
+            labels=None,
             overlay_draw_threshold=1.0,
+            overlay_style=OverlayStyle.BOX,
         )
-        detection_state = {
+        detection_state: DetectionQueueData = {
             "detection_result": [
                 {
                     "bbox": [5, 5, 25, 20],

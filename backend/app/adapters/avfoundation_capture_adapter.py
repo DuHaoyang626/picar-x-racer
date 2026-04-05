@@ -242,12 +242,13 @@ class AVFoundationCaptureAdapter(VideoCaptureABC):
             pass
 
     def _start_stderr_reader(self, process: subprocess.Popen[bytes]) -> None:
-        if process.stderr is None:
+        stderr_pipe = process.stderr
+        if stderr_pipe is None:
             return
 
         def reader() -> None:
             try:
-                for raw_line in iter(process.stderr.readline, b""):
+                for raw_line in iter(stderr_pipe.readline, b""):
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if line:
                         self._stderr_lines.append(line)

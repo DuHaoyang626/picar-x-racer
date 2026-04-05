@@ -91,7 +91,7 @@ class CameraService:
 
     @staticmethod
     def _log_notification_future(
-        future: Future[object],
+        future: Future[None],
     ) -> None:
         try:
             future.result()

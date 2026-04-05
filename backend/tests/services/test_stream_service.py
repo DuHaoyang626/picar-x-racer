@@ -75,9 +75,6 @@ class DummyCameraService:
     def bind_notification_loop(self) -> None:
         pass
 
-    def start_camera(self) -> None:
-        pass
-
 
 async def fake_to_thread(func, *args, **kwargs):
     """A helper async wrapper to replace asyncio.to_thread in tests."""
@@ -261,7 +258,7 @@ class TestStreamService(unittest.IsolatedAsyncioTestCase):
 
         self.dummy_cam.camera_run = False
         self.dummy_cam.camera_device_error = None
-        self.dummy_cam.start_camera = fake_start_camera
+        self.dummy_cam.start_camera.side_effect = fake_start_camera
 
         self.stream_service._ws_video_loop = AsyncMock()
 
@@ -283,7 +280,7 @@ class TestStreamService(unittest.IsolatedAsyncioTestCase):
 
         self.dummy_cam.camera_run = False
         self.dummy_cam.camera_device_error = None
-        self.dummy_cam.start_camera = fake_start_camera
+        self.dummy_cam.start_camera.side_effect = fake_start_camera
         self.dummy_cam.stream_settings.video_record = True
 
         self.stream_service._ws_video_loop = AsyncMock()
