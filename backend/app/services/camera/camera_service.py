@@ -524,8 +524,10 @@ class CameraService:
             capture_thread = self._capture_thread
             cap = self.cap
 
-            if not self.camera_run and cap is None and (
-                capture_thread is None or not capture_thread.is_alive()
+            if (
+                not self.camera_run
+                and cap is None
+                and (capture_thread is None or not capture_thread.is_alive())
             ):
                 _log.info("Camera is not running.")
                 return

@@ -102,7 +102,9 @@ class AVFoundationService(VideoDeviceABC):
         # FFmpeg's avfoundation input accepts the exact max frame rate for these
         # camera modes reliably on macOS, while lower in-range values like 15 FPS
         # can still be rejected even when AVFoundation reports a 15-30 range.
-        max_fps = max(cls._round_fps(float(item.maxFrameRate())) for item in frame_ranges)
+        max_fps = max(
+            cls._round_fps(float(item.maxFrameRate())) for item in frame_ranges
+        )
         return [max_fps]
 
     def _build_profiles(self, device: Any, core_media: Any) -> List[DeviceType]:
